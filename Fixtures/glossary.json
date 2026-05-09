@@ -1,0 +1,19 @@
+{
+  "doNotTranslate": [
+    "Microsoft Teams",
+    "Microsoft",
+    "OneDrive",
+    "Flipgrid"
+  ],
+  "tone": {
+    "default": "professional",
+    "de": "formal",
+    "fr": "formal",
+    "ja": "polite"
+  },
+  "termMappings": {
+    "de": {
+      "Premium": "Pro"
+    }
+  }
+}

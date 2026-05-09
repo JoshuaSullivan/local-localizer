@@ -1,0 +1,30 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "premium_upsell" : {
+      "comment" : "Prompt to upgrade to the paid tier",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Upgrade to Premium for unlimited storage."
+          }
+        }
+      }
+    },
+    "teams_share" : {
+      "comment" : "Header for the Teams share sheet",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share to Microsoft Teams"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

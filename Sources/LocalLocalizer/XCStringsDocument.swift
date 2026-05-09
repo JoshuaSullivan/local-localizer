@@ -23,12 +23,13 @@ enum XCStringsError: Error, LocalizedError {
 ///
 /// Backed by a `[String: Any]` tree from `JSONSerialization` to round-trip every
 /// field — known or unknown — without lossy `Codable` re-encoding. The tool only
-/// reads `sourceLanguage`, `strings.<key>.comment`, and
-/// `strings.<key>.localizations.<sourceLanguage>.stringUnit.value`, and writes
-/// `strings.<key>.localizations.<targetLocale>.stringUnit = {state, value}`.
+/// reads `sourceLanguage`, `strings.<key>.comment`, and the source-language
+/// `stringUnit` / plural-`variations` values, and writes
+/// `strings.<key>.localizations.<targetLocale>.stringUnit = {state, value}` for
+/// simple entries or under `variations.plural.<category>` for plural entries.
 ///
-/// Source entries that use plural / device `variations` are filtered out of
-/// ``entries`` in v1 and reported via ``skipped`` so the orchestrator can warn.
+/// Source entries with `device` variations are skipped in v2 with a warning
+/// surfaced via ``skipped``.
 final class XCStringsDocument: CatalogDocument {
     /// A note about a key skipped at load time, surfaced to the orchestrator for warning.
     struct SkipNotice {
@@ -75,7 +76,6 @@ final class XCStringsDocument: CatalogDocument {
         var collectedEntries: [CatalogEntry] = []
         var skipped: [SkipNotice] = []
         let strings = dict["strings"] as? [String: Any] ?? [:]
-        // Sort keys for deterministic processing order (matches Xcode's alphabetical UI).
         for key in strings.keys.sorted() {
             guard let entry = strings[key] as? [String: Any] else { continue }
             if let extractionState = entry["extractionState"] as? String, extractionState == "stale" {
@@ -83,53 +83,103 @@ final class XCStringsDocument: CatalogDocument {
             }
             let comment = entry["comment"] as? String
             let localizations = entry["localizations"] as? [String: Any] ?? [:]
-            // The source string lives under localizations.<sourceLanguage>.stringUnit.value.
-            // If absent, fall back to the key itself — Xcode leaves the source slot empty
-            // for keys whose source string equals the key.
-            let sourceValue: String
-            if let sourceLoc = localizations[sourceLanguage] as? [String: Any] {
-                if sourceLoc["variations"] != nil {
-                    skipped.append(.init(key: key, reason: "source uses plural/device variations (v1 only handles plain stringUnit)"))
+
+            let sourceLoc = localizations[sourceLanguage] as? [String: Any]
+
+            // Plural variations: extract one source value per CLDR category.
+            if let variations = sourceLoc?["variations"] as? [String: Any] {
+                if let pluralBlock = variations["plural"] as? [String: Any] {
+                    let pluralForms = Self.extractPluralForms(from: pluralBlock)
+                    if let other = pluralForms[.other], !pluralForms.isEmpty {
+                        collectedEntries.append(CatalogEntry(
+                            key: key,
+                            comment: comment,
+                            sourceValue: other,
+                            pluralForms: pluralForms
+                        ))
+                        continue
+                    } else {
+                        skipped.append(.init(key: key, reason: "source plural variations missing the 'other' category"))
+                        continue
+                    }
+                }
+                if variations["device"] != nil {
+                    skipped.append(.init(key: key, reason: "source uses device variations (v2 doesn't translate these)"))
                     continue
                 }
-                if let unit = sourceLoc["stringUnit"] as? [String: Any],
-                   let value = unit["value"] as? String {
-                    sourceValue = value
-                } else {
-                    sourceValue = key
-                }
+                skipped.append(.init(key: key, reason: "source uses an unsupported variations type"))
+                continue
+            }
+
+            // Simple stringUnit (or fall back to using the key as the source value).
+            let sourceValue: String
+            if let unit = sourceLoc?["stringUnit"] as? [String: Any],
+               let value = unit["value"] as? String {
+                sourceValue = value
             } else {
                 sourceValue = key
             }
-            collectedEntries.append(.init(key: key, comment: comment, sourceValue: sourceValue))
+            collectedEntries.append(CatalogEntry(
+                key: key,
+                comment: comment,
+                sourceValue: sourceValue,
+                pluralForms: nil
+            ))
         }
         self.entries = collectedEntries
         self.skipped = skipped
     }
 
-    func hasTranslation(forKey key: String, locale: String) -> Bool {
+    func hasTranslation(forKey key: String, locale: String, pluralCategory: PluralCategory?) -> Bool {
         guard let strings = root["strings"] as? [String: Any],
               let entry = strings[key] as? [String: Any],
               let localizations = entry["localizations"] as? [String: Any],
               let target = localizations[locale] as? [String: Any] else {
             return false
         }
-        // Variations also count as "has translation" — we don't overwrite them.
-        if target["variations"] != nil { return true }
-        if let unit = target["stringUnit"] as? [String: Any],
-           let value = unit["value"] as? String,
-           !value.isEmpty {
-            return true
+        if let pluralCategory {
+            guard let variations = target["variations"] as? [String: Any],
+                  let plural = variations["plural"] as? [String: Any],
+                  let category = plural[pluralCategory.rawValue] as? [String: Any],
+                  let unit = category["stringUnit"] as? [String: Any] else {
+                return false
+            }
+            return Self.unitIsCurrent(unit)
+        } else {
+            if let unit = target["stringUnit"] as? [String: Any] {
+                return Self.unitIsCurrent(unit)
+            }
+            return false
         }
-        return false
     }
 
-    func setTranslation(_ value: String, forKey key: String, locale: String) throws {
+    func setTranslation(
+        _ value: String,
+        forKey key: String,
+        locale: String,
+        pluralCategory: PluralCategory?,
+        state: TranslationState
+    ) throws {
         var strings = root["strings"] as? [String: Any] ?? [:]
         var entry = strings[key] as? [String: Any] ?? [:]
         var localizations = entry["localizations"] as? [String: Any] ?? [:]
-        let stringUnit: [String: Any] = ["state": "translated", "value": value]
-        localizations[locale] = ["stringUnit": stringUnit]
+        let stringUnit: [String: Any] = ["state": state.rawValue, "value": value]
+
+        if let pluralCategory {
+            var target = localizations[locale] as? [String: Any] ?? [:]
+            // Plural entries can never coexist with a top-level stringUnit at the
+            // same locale, so wipe that slot if some prior write left one.
+            target.removeValue(forKey: "stringUnit")
+            var variations = target["variations"] as? [String: Any] ?? [:]
+            var plural = variations["plural"] as? [String: Any] ?? [:]
+            plural[pluralCategory.rawValue] = ["stringUnit": stringUnit]
+            variations["plural"] = plural
+            target["variations"] = variations
+            localizations[locale] = target
+        } else {
+            // Simple write — overwrites any prior stringUnit for that locale.
+            localizations[locale] = ["stringUnit": stringUnit]
+        }
         entry["localizations"] = localizations
         strings[key] = entry
         root["strings"] = strings
@@ -140,5 +190,33 @@ final class XCStringsDocument: CatalogDocument {
         let data = try JSONSerialization.data(withJSONObject: root, options: options)
         // Xcode terminates the file with a trailing newline; match that.
         try (data + Data([0x0A])).write(to: outputPath, options: .atomic)
+    }
+
+    // MARK: - Private
+
+    /// Reads source-side plural forms out of a `variations.plural` block.
+    private static func extractPluralForms(from block: [String: Any]) -> [PluralCategory: String] {
+        var result: [PluralCategory: String] = [:]
+        for (rawCategory, raw) in block {
+            guard let category = PluralCategory(rawValue: rawCategory),
+                  let inner = raw as? [String: Any],
+                  let unit = inner["stringUnit"] as? [String: Any],
+                  let value = unit["value"] as? String,
+                  !value.isEmpty else {
+                continue
+            }
+            result[category] = value
+        }
+        return result
+    }
+
+    /// A `stringUnit` counts as "current" when it has a non-empty value AND its
+    /// state isn't `needs_review` or `stale`. The orchestrator skips current
+    /// translations and re-runs anything else.
+    private static func unitIsCurrent(_ unit: [String: Any]) -> Bool {
+        guard let value = unit["value"] as? String, !value.isEmpty else { return false }
+        let state = unit["state"] as? String
+        if state == "needs_review" || state == "stale" { return false }
+        return true
     }
 }

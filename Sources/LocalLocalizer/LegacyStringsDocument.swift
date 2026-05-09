@@ -94,16 +94,28 @@ final class LegacyStringsDocument: CatalogDocument {
         let parsed = try Self.parse(source: source, fileURL: inputPath)
         self.sourceEntries = parsed
         self.entries = parsed.map {
-            CatalogEntry(key: $0.key, comment: $0.comment, sourceValue: $0.value)
+            CatalogEntry(key: $0.key, comment: $0.comment, sourceValue: $0.value, pluralForms: nil)
         }
     }
 
-    func hasTranslation(forKey key: String, locale: String) -> Bool {
+    func hasTranslation(forKey key: String, locale: String, pluralCategory: PluralCategory?) -> Bool {
+        // Legacy .strings doesn't model plural variations.
+        assert(pluralCategory == nil, "Legacy .strings doesn't support plural variations")
         ensureLocaleLoaded(locale)
         return perLocale[locale]?[key]?.isEmpty == false
     }
 
-    func setTranslation(_ value: String, forKey key: String, locale: String) throws {
+    func setTranslation(
+        _ value: String,
+        forKey key: String,
+        locale: String,
+        pluralCategory: PluralCategory?,
+        state: TranslationState
+    ) throws {
+        // Legacy .strings doesn't model plural variations or per-translation state;
+        // both are silently accepted so the protocol stays uniform.
+        assert(pluralCategory == nil, "Legacy .strings doesn't support plural variations")
+        _ = state
         ensureLocaleLoaded(locale)
         perLocale[locale, default: [:]][key] = value
         dirtyLocales.insert(locale)
