@@ -1,0 +1,22 @@
+# SwiftPM
+.build/
+.swiftpm/
+Packages/
+Package.resolved
+
+# Xcode (generated when opening Package.swift in Xcode)
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+*.xcscmblueprint
+*.xccheckout
+
+# macOS
+.DS_Store
+
+# Claude Code artifacts
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+.claude.json

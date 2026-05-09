@@ -1,0 +1,13 @@
+/* Confirmation button label, imperative */
+"delete_confirm" = "Löschen";
+
+/* Personalized greeting on launch screen */
+"greeting" = "Hallo, %@!";
+
+/* Two-line status shown after a long operation */
+"multiline_status" = "Synchronisation abgeschlossen. Alle Änderungen wurden gespeichert.";
+
+"ok" = "OK";
+
+/* First-launch welcome message, friendly tone */
+"welcome_long" = "Willkommen in der App! Melde dich an, um deine Daten auf verschiedenen Geräten zu synchronisieren.";
