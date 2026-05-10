@@ -4,7 +4,7 @@ A macOS command-line tool that machine-translates an iOS/macOS String Catalog (`
 
 Translations run entirely on-device. No API keys, no network, no per-call cost.
 
-> **Disclaimer.** Translations are produced by an AI model (Apple's on-device Foundation Models). They will contain errors — wrong words, awkward phrasing, missed nuance, broken format specifiers, mistranslated brand names — and the rate of error varies by language, domain, and prompt. Always have a native speaker review the output before shipping. The author of this tool makes no representations or warranties about the correctness, fitness, or safety of any translation it produces and accepts no responsibility for any consequence of using its output. By running this tool you agree that you are responsible for reviewing and validating every translation it generates. See the LICENSE file for the full disclaimer of warranties.
+> **Disclaimer.** Translations are produced by an AI model (Apple's on-device Foundation Models). They will contain errors: wrong words, awkward phrasing, missed nuance, broken format specifiers, mistranslated brand names. The rate of error varies by language, domain, and prompt. Always have a native speaker review the output before shipping. The author of this tool makes no representations or warranties about the correctness, fitness, or safety of any translation it produces and accepts no responsibility for any consequence of using its output. By running this tool you agree that you are responsible for reviewing and validating every translation it generates. See the LICENSE file for the full disclaimer of warranties.
 
 ## Requirements
 
